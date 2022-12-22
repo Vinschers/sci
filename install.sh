@@ -11,4 +11,4 @@ fi
 
 sudo patch -N /usr/lib/node_modules/translation-server/modules/utilities/utilities_item.js utilities_item.js.diff
 
-sudo ln -s /usr/share/sci /usr/local/bin/sci
+sudo ln -s /usr/share/sci/sci /usr/local/bin/sci

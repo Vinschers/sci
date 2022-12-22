@@ -1,6 +1,6 @@
 #!/bin/sh
 
-git clone https://github.com/Vinschers/sci /usr/share/sci
+sudo git clone https://github.com/Vinschers/sci /usr/share/sci
 cd /usr/share/sci || exit 1
 
 if ! [ -d "/usr/lib/node_modules/translation-server/modules/utilities" ]; then

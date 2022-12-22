@@ -99,8 +99,7 @@ uninstall)
 	;;
 
 update-git)
-	[ -d "/usr/share/sci" ] && cd /usr/share/sci && git pull
-	curl -s "https://raw.githubusercontent.com/Vinschers/sci/main/install.sh" | /bin/sh
+	[ -d "/usr/share/sci" ] && cd /usr/share/sci && sudo git pull
 	;;
 
 "")

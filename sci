@@ -64,6 +64,12 @@ uninstall)
     fi
     ;;
 
+update-git)
+    [ -d "/usr/share/sci" ] && sudo rm -rf /usr/share/sci
+    [ -f "/usr/local/bin/sci" ] && sudo rm /usr/local/bin/sci
+    curl -s "https://raw.githubusercontent.com/Vinschers/sci/main/install.sh" | dash
+    ;;
+
 *)
 	TYPE_ID="$(extract_identifier "$1")"
 

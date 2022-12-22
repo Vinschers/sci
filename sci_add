@@ -1,0 +1,158 @@
+#!/bin/sh
+
+download_doi() {
+	ID="$1"
+	PDF_PATH="$2"
+	PDF_URL="$3"
+
+	if [ -z "$PDF_PATH" ]; then
+		URL="https://doi.org/$ID"
+		PDF_PATH="$(curl -sd "$URL" -H "Content-Type: text/plain" "http://localhost:1969/web" | jq -r 'map(select(.mimeType == "application/pdf")) | .[]?.url' | head -n 1)"
+	fi
+
+	curl -Isfo /dev/null "$PDF_URL" || PDF_URL=""
+
+	[ -z "$PDF_URL" ] && notify-send -u low "Couldn't find PDF online." && return 1
+
+	case "$PDF_URL" in
+	*.pdf)
+		curl -Ls "$PDF_URL" >"$PDF_PATH"
+		;;
+	*)
+		DL_PATH="$(filedl "$PDF_URL")"
+
+		mv "$DL_PATH" "$PDF_PATH"
+		;;
+	esac
+}
+
+download_isbn() {
+	ISBN="$1"
+	PDF_PATH="$2"
+
+	option="$(printf "Yes\nNo" | dmenu -i -l 2 -p "Download from Library Genesis?")"
+
+	if [ "$option" != "Yes" ]; then
+	    option="$(printf "Yes\nNo" | dmenu -i -l 2 -p "Create empty file?")"
+        [ "$option" = "Yes" ] && touch "$PDF_PATH"
+        return 1
+    fi
+
+	md5="$(curl -s "https://libgen.li/json.php?object=e&isbn=$ISBN&fields=md5,title,year,edition,pages" | python -c "
+import json
+import subprocess
+json_str = input()
+data = json.loads(json_str)
+if not data:
+    print()
+    exit()
+options = {}
+for _, book in data.items():
+    for _, file in book['files'].items():
+        md5 = file['md5']
+        break
+
+    option_name = f\"[{book['year']}] {book['title']} - {book['edition']} ({book['pages']} pages)\"
+
+    options[option_name] = md5
+
+options_process = subprocess.Popen(['echo', '-e', '\n'.join(options.keys())], stdout=subprocess.PIPE)
+selection_process = subprocess.Popen(['dmenu', '-i', '-l', '10'], stdin=options_process.stdout, stdout=subprocess.PIPE)
+selected = selection_process.communicate()[0].decode('utf-8', 'ignore').replace('\n', '')
+if selected:
+    print(options[selected])
+else:
+    print()")"
+
+	[ -z "$md5" ] && return 1
+
+	URL="https://libgen.rocks/$(curl -s "https://libgen.rocks/ads.php?md5=$md5" | grep "get.php" | grep -Po "<a\s+(?:[^>]*?\s+)?href=([\"'])(.*?)\1" | cut -d "\"" -f2 | cut -d "\"" -f1)"
+
+	curl -sL "$URL" >"$PDF_PATH"
+}
+
+download_pdf() {
+	ID="$1"
+	TYPE="$2"
+	PDF_PATH="$3"
+	PDF_URL="$4"
+
+	[ -f "$PDF_PATH" ] && return 1
+	mkdir -p "$(dirname "$PDF_PATH")"
+
+	OK=false
+
+	case "$TYPE" in
+	"doi")
+		download_doi "$ID" "$PDF_PATH" "$PDF_URL" && OK=true
+		;;
+	"isbn")
+		download_isbn "$ID" "$PDF_PATH" && OK=true
+		;;
+	*)
+		notify-send -u low "Unknown type '$TYPE'"
+		OK=false
+		;;
+	esac
+
+	if $OK; then
+		notify-send -u low "PDF downloaded."
+		return 0
+	else
+		notify-send -u low "Couldn't download PDF."
+		return 1
+	fi
+}
+
+add_global() {
+	ID="$1"
+	TYPE="$2"
+	GLOBAL_BIB="$ACADEMIC_DIRECTORY/bibliography/library.bib"
+
+	if ! [ -f "$GLOBAL_BIB" ] && [ -n "$GLOBAL_BIB" ]; then
+		mkdir -p "$(dirname "$GLOBAL_BIB")"
+		touch "$GLOBAL_BIB"
+	fi
+
+	if [ -f "$GLOBAL_BIB" ] && ! grep -q "$ID" "$GLOBAL_BIB"; then
+		URL_BIB="$(getbib "$ID" "$GLOBAL_BIB")"
+
+		PDF_URL="$(echo "$URL_BIB" | head -n 1)"
+		BIB_STR="$(echo "$URL_BIB" | tail -n +2)"
+
+		[ -z "$BIB_STR" ] && exit 1
+
+		echo "$BIB_STR" >"$GLOBAL_BIB"
+		notify-send -u low "Added to global library."
+	fi
+
+	# Extract new bib string from whole file
+	BIB_STR="$(awk -v RS='' -v id="$ID" 'BEGIN{gsub(/\(|\)/,"\\\\&", id)} $0 ~ id' "$GLOBAL_BIB")"
+	PDF_PATH="$(sci_pdf_path "$BIB_STR")"
+
+	if [ -f "$GLOBAL_BIB" ] && [ -z "$PDF_URL" ]; then
+		URL="$(echo "$BIB_STR" | grep "url = " | cut -d "{" -f2 | cut -d "}" -f1)"
+		[ -z "$URL" ] && URL="https://doi.org/$ID"
+
+		curl -Isfo /dev/null "$URL" && PDF_URL="$(curl -sd "$URL" -H "Content-Type: text/plain" "http://localhost:1969/web" | jq -r 'map(select(.mimeType == "application/pdf")) | .[]?.url' | head -n 1)"
+	fi
+
+	! [ -f "$PDF_PATH" ] && download_pdf "$ID" "$TYPE" "$PDF_PATH" "$PDF_URL"
+}
+
+TYPE="$1"
+ID="$2"
+
+[ -f "$3" ] && BIB_FILE="$3"
+
+add_global "$ID" "$TYPE"
+diff="$?"
+
+if [ -f "$BIB_FILE" ] && ! grep -q "$ID" "$BIB_FILE"; then
+	echo "$BIB_STR" >>"$BIB_FILE"
+	notify-send -u low "Added to local library."
+
+    return 0
+fi
+
+return "$diff"

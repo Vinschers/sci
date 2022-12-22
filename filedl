@@ -1,0 +1,96 @@
+#!/bin/python
+
+import json
+import os
+import sys
+import tempfile
+import time
+from functools import reduce
+
+import undetected_chromedriver as webdriver
+
+
+class ChromeWithPrefs(webdriver.Chrome):
+    def __init__(self, *args, options=None, **kwargs):
+        if options:
+            self._handle_prefs(options)
+
+        super().__init__(*args, options=options, **kwargs)
+
+        # remove the user_data_dir when quitting
+        self.keep_user_data_dir = False
+
+    @staticmethod
+    def _handle_prefs(options):
+        if prefs := options.experimental_options.get("prefs"):
+            # turn a (dotted key, value) into a proper nested dict
+            def undot_key(key, value):
+                if "." in key:
+                    key, rest = key.split(".", 1)
+                    value = undot_key(rest, value)
+                return {key: value}
+
+            # undot prefs dict keys
+            undot_prefs = reduce(
+                lambda d1, d2: {**d1, **d2},  # merge dicts
+                (undot_key(key, value) for key, value in prefs.items()),
+            )
+
+            # create an user_data_dir and add its path to the options
+            user_data_dir = os.path.normpath(tempfile.mkdtemp())
+            options.add_argument(f"--user-data-dir={user_data_dir}")
+
+            # create the preferences json file in its default directory
+            default_dir = os.path.join(user_data_dir, "Default")
+            os.mkdir(default_dir)
+
+            prefs_file = os.path.join(default_dir, "Preferences")
+            with open(prefs_file, encoding="latin1", mode="w") as f:
+                json.dump(undot_prefs, f)
+
+            # pylint: disable=protected-access
+            # remove the experimental_options to avoid an error
+            del options._experimental_options["prefs"]
+
+
+# method to get the downloaded file name
+def getDownloadedFileName(driver, waitTime):
+    driver.execute_script("window.open()")
+    # switch to new tab
+    driver.switch_to.window(driver.window_handles[-1])
+    # navigate to chrome downloads
+    driver.get("chrome://downloads")
+    # define the endTime
+    endTime = time.time() + waitTime
+    while True:
+        try:
+            # get downloaded percentage
+            downloadPercentage = driver.execute_script(
+                "return document.querySelector('downloads-manager').shadowRoot.querySelector('#downloadsList downloads-item').shadowRoot.querySelector('#progress').value"
+            )
+            # check if downloadPercentage is 100 (otherwise the script will keep waiting)
+            if downloadPercentage == 100:
+                # return the file name once the download is completed
+                return driver.execute_script(
+                    "return document.querySelector('downloads-manager').shadowRoot.querySelector('#downloadsList downloads-item').shadowRoot.querySelector('div#content  #file-link').text"
+                )
+        except:
+            pass
+        time.sleep(1)
+        if time.time() > endTime:
+            break
+
+
+if __name__ == "__main__":
+    url = sys.argv[1]
+
+    options = webdriver.ChromeOptions()
+    options.add_experimental_option("prefs", {"plugins.always_open_pdf_externally": True})
+
+    # use the derived Chrome class that handles prefs
+    driver = ChromeWithPrefs(options=options)
+
+    with driver:
+        driver.get(url)
+        filename = getDownloadedFileName(driver, 5)
+        print(f"{os.environ.get('HOME', '')}/Downloads/{filename}")

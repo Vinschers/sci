@@ -1,8 +1,25 @@
 #!/bin/sh
 
-
 help() {
-    echo "help"
+	echo "help"
+}
+
+find_up() {
+	if [ -n "$1" ]; then
+		path="$1"
+	else
+		path="."
+	fi
+
+	shift 1
+
+	while [ "$path" != / ] && [ -z "$searched" ]; do
+		searched="$(find "$path" -maxdepth 1 -mindepth 1 "$@")"
+		path="$(readlink -f "$path"/..)"
+	done
+
+	echo "$searched"
+
 }
 
 extract_identifier() {
@@ -13,6 +30,18 @@ extract_identifier() {
 	[ -n "$ID" ] && echo "isbn $(echo "$ID" | sed -e "s/-//g")" && return 0
 
 	echo "N $*"
+}
+
+sci_add() {
+	/usr/share/sci/sci_add $@
+}
+
+sci_open() {
+	/usr/share/sci/sci_open $@
+}
+
+sci_update() {
+	/usr/share/sci/sci_update $@
 }
 
 [ -z "$1" ] && sci_open && exit 0
@@ -70,13 +99,12 @@ uninstall)
 	;;
 
 update-git)
-	[ -d "/usr/share/sci" ] && sudo rm -rf /usr/share/sci
-	[ -f "/usr/local/bin/sci" ] && sudo rm /usr/local/bin/sci
-	curl -s "https://raw.githubusercontent.com/Vinschers/sci/main/install.sh" | dash
+	[ -d "/usr/share/sci" ] && cd /usr/share/sci && git pull
+	curl -s "https://raw.githubusercontent.com/Vinschers/sci/main/install.sh" | /bin/sh
 	;;
 
 "")
-    [ -z "$1" ] && help && exit 1
+	[ -z "$1" ] && help && exit 1
 	TYPE_ID="$(extract_identifier "$1")"
 
 	if sci_add $TYPE_ID "$BIB_FILE" && [ -f "$BIB_FILE" ]; then

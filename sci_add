@@ -19,7 +19,7 @@ download_doi() {
 		curl -Ls "$PDF_URL" >"$PDF_PATH"
 		;;
 	*)
-		DL_PATH="$(filedl "$PDF_URL")"
+		DL_PATH="$(/usr/share/sci/filedl "$PDF_URL")"
 
 		mv "$DL_PATH" "$PDF_PATH"
 		;;
@@ -115,7 +115,7 @@ add_global() {
 	fi
 
 	if [ -f "$GLOBAL_BIB" ] && ! grep -q "$ID" "$GLOBAL_BIB"; then
-		URL_BIB="$(getbib "$ID" "$GLOBAL_BIB")"
+		URL_BIB="$(/usr/share/sci/getbib "$ID" "$GLOBAL_BIB")"
 
 		PDF_URL="$(echo "$URL_BIB" | head -n 1)"
 		BIB_STR="$(echo "$URL_BIB" | tail -n +2)"
@@ -128,7 +128,7 @@ add_global() {
 
 	# Extract new bib string from whole file
 	BIB_STR="$(awk -v RS='' -v id="$ID" 'BEGIN{gsub(/\(|\)/,"\\\\&", id)} $0 ~ id' "$GLOBAL_BIB")"
-	PDF_PATH="$(sci_pdf_path "$BIB_STR")"
+	PDF_PATH="$(/usr/share/sci/sci_pdf_path "$BIB_STR")"
 
 	if [ -f "$GLOBAL_BIB" ] && [ -z "$PDF_URL" ]; then
 		URL="$(echo "$BIB_STR" | grep "url = " | cut -d "{" -f2 | cut -d "}" -f1)"

@@ -55,7 +55,7 @@ open () {
 
     [ -z "$BIB_STR" ] && return 0
 
-    PDF_PATH="$(sci_pdf_path "$BIB_STR")"
+    PDF_PATH="$(/usr/share/sci/sci_pdf_path "$BIB_STR")"
 
 	if [ -f "$PDF_PATH" ]
 	then

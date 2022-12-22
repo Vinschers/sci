@@ -9,6 +9,6 @@ if ! [ -d "/usr/lib/node_modules/translation-server/modules/utilities" ]; then
     exit 1
 fi
 
-sudo patch /usr/lib/node_modules/translation-server/modules/utilities/utilities_item.js utilities_item.js.diff
+sudo patch -N /usr/lib/node_modules/translation-server/modules/utilities/utilities_item.js utilities_item.js.diff
 
 sudo ln -s /usr/share/sci /usr/local/bin/sci

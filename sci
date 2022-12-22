@@ -1,5 +1,10 @@
 #!/bin/sh
 
+
+help() {
+    echo "help"
+}
+
 extract_identifier() {
 	ID="$(echo "$@" | grep -Po "(10\.[0-9a-zA-Z]+\/(?:(?![\"&\'])\S)+)\b")"
 	[ -n "$ID" ] && echo "doi $ID" && return 0
@@ -55,22 +60,23 @@ update)
 	;;
 
 uninstall)
-    [ -d "/usr/share/sci" ] && sudo rm -rf /usr/share/sci
-    [ -f "/usr/local/bin/sci" ] && sudo rm /usr/local/bin/sci
-    printf "Remove %s [y/N]?" "$ACADEMIC_DIRECTORY"
-    read -r rm_academic_directory
-    if [ "$rm_academic_directory" = "y" ] || [ "$rm_academic_directory" = "Y" ]; then
-        sudo rm -rf "$ACADEMIC_DIRECTORY"
-    fi
-    ;;
+	[ -d "/usr/share/sci" ] && sudo rm -rf /usr/share/sci
+	[ -f "/usr/local/bin/sci" ] && sudo rm /usr/local/bin/sci
+	printf "Remove %s [y/N]?" "$ACADEMIC_DIRECTORY"
+	read -r rm_academic_directory
+	if [ "$rm_academic_directory" = "y" ] || [ "$rm_academic_directory" = "Y" ]; then
+		sudo rm -rf "$ACADEMIC_DIRECTORY"
+	fi
+	;;
 
 update-git)
-    [ -d "/usr/share/sci" ] && sudo rm -rf /usr/share/sci
-    [ -f "/usr/local/bin/sci" ] && sudo rm /usr/local/bin/sci
-    curl -s "https://raw.githubusercontent.com/Vinschers/sci/main/install.sh" | dash
-    ;;
+	[ -d "/usr/share/sci" ] && sudo rm -rf /usr/share/sci
+	[ -f "/usr/local/bin/sci" ] && sudo rm /usr/local/bin/sci
+	curl -s "https://raw.githubusercontent.com/Vinschers/sci/main/install.sh" | dash
+	;;
 
-*)
+"")
+    [ -z "$1" ] && help && exit 1
 	TYPE_ID="$(extract_identifier "$1")"
 
 	if sci_add $TYPE_ID "$BIB_FILE" && [ -f "$BIB_FILE" ]; then

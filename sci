@@ -33,16 +33,21 @@ extract_identifier() {
 }
 
 sci_add() {
-	/usr/share/sci/sci_add $@
+	"$SCI_DIRECTORY/sci_add" $@
 }
 
 sci_open() {
-	/usr/share/sci/sci_open $@
+	"$SCI_DIRECTORY/sci_open" $@
 }
 
 sci_update() {
-	/usr/share/sci/sci_update $@
+	"$SCI_DIRECTORY/sci_update" $@
 }
+
+export SCI_DIRECTORY="$(
+	cd "$(dirname "$0")" || exit 1
+	pwd -P
+)"
 
 [ -z "$1" ] && sci_open && exit 0
 
@@ -89,7 +94,7 @@ update)
 	;;
 
 uninstall)
-	[ -d "/usr/share/sci" ] && sudo rm -rf /usr/share/sci
+	[ -d "$SCI_DIRECTORY" ] && sudo rm -rf "$SCI_DIRECTORY"
 	[ -f "/usr/local/bin/sci" ] && sudo rm /usr/local/bin/sci
 	printf "Remove %s [y/N]?" "$ACADEMIC_DIRECTORY"
 	read -r rm_academic_directory
@@ -99,12 +104,12 @@ uninstall)
 	;;
 
 update-git)
-	[ -d "/usr/share/sci" ] && cd /usr/share/sci && sudo git pull
+	[ -d "$SCI_DIRECTORY" ] && cd "$SCI_DIRECTORY" && sudo git pull
 	;;
 
-"")
-	[ -z "$1" ] && help && exit 1
+*)
 	TYPE_ID="$(extract_identifier "$1")"
+	[ -z "$TYPE_ID" ] && help && exit 1
 
 	if sci_add $TYPE_ID "$BIB_FILE" && [ -f "$BIB_FILE" ]; then
 		sci_update "$BIB_FILE"

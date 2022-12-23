@@ -45,7 +45,7 @@ sci_update() {
 }
 
 export SCI_DIRECTORY="$(
-	cd "$(dirname "$0")" || exit 1
+	cd "$(dirname "$(readlink -f "$0")")" || exit 1
 	pwd -P
 )"
 

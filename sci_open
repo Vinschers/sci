@@ -59,7 +59,7 @@ open () {
 
 	if [ -f "$PDF_PATH" ]
 	then
-		sioyek "$PDF_PATH" || zathura "$PDF_PATH"
+        xdg-open "$PDF_PATH"
 	else
 		notify-send "PDF unavailable."
 	fi

@@ -19,7 +19,7 @@ with open('$BIB_FILE', 'r') as bibfile:
     database = bibtexparser.bparser.BibTexParser(common_strings=True, ignore_nonstandard_types=False).parse_file(bibfile)
 
     for entry in database.entries:
-        print(entry['ENTRYTYPE'], entry['ID'], entry['title'])" > temp_type_ids
+        print(entry['ENTRYTYPE'], entry['ID'], entry['title'].replace('\n', ''))" > temp_type_ids
 
 while read -r TYPE_ID_TITLE
 do

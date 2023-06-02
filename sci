@@ -4,22 +4,36 @@ help() {
 	echo "help"
 }
 
-find_up() {
-	if [ -n "$1" ]; then
-		path="$1"
-	else
-		path="."
-	fi
+find_bib_file() {
+	path="."
 
-	shift 1
-
-	while [ "$path" != / ] && [ -z "$searched" ]; do
-		searched="$(find "$path" -maxdepth 1 -mindepth 1 "$@")"
+	while [ "$path" != / ] && [ -z "$bib_file" ]; do
+		bib_file="$(find "$path" -maxdepth 1 -mindepth 1 -name "*.bib" -print -quit)"
 		path="$(readlink -f "$path"/..)"
 	done
 
-	echo "$searched"
+	echo "$bib_file"
 
+}
+
+get_pdf_name() {
+	bib="$1"
+
+	bib_id_type="$(python -c "import bibtexparser; entry = bibtexparser.bparser.BibTexParser(common_strings=True, ignore_nonstandard_types=False).parse(\"\"\"$bib\"\"\").entries[-1]; print(entry['ID']); print(entry['ENTRYTYPE']); print(entry['title'])")"
+	bib_id="$(echo "$bib_id_type" | sed '1q;d')"
+	bib_type="$(echo "$bib_id_type" | sed '2q;d')"
+	bib_title="$(echo "$bib_id_type" | sed '3q;d' | sed -e "s/\\\\//g" | sed -e "s/://g")"
+
+	echo "$bib_id"
+
+	case "$bib_type" in
+	book)
+		echo "$bib_title"
+		;;
+	*)
+		echo "$bib_id"
+		;;
+	esac
 }
 
 extract_identifier() {
@@ -32,31 +46,11 @@ extract_identifier() {
 	echo "N $*"
 }
 
-sci_add() {
-	"$SCI_DIRECTORY/sci_add" $@
-}
+bib_file="$(find_bib_file)"
+[ -z "$bib_file" ] && touch library.bib && bib_file="library.bib"
 
-sci_open() {
-	"$SCI_DIRECTORY/sci_open" $@
-}
-
-sci_update() {
-	"$SCI_DIRECTORY/sci_update" $@
-}
-
-export SCI_DIRECTORY="$(
-	cd "$(dirname "$(readlink -f "$0")")" || exit 1
-	pwd -P
-)"
-
-[ -z "$1" ] && sci_open && exit 0
-
-BIB_FILE="$(find . -maxdepth 1 -name "*.bib" -print -quit)"
-[ -z "$BIB_FILE" ] && BIB_FILE="$(find_up . -name "*.bib" -print -quit)"
-
-[ -z "$ACADEMIC_DIRECTORY" ] && export ACADEMIC_DIRECTORY="$HOME"
-
-[ -n "$BIB_FILE" ] && [ "$(dirname "$(realpath "$BIB_FILE")")" = "$(realpath "$ACADEMIC_DIRECTORY/bibliography")" ] && BIB_FILE=""
+bibliography_dir="$(dirname "$bib_file")/bibliography"
+mkdir -p "$bibliography_dir"
 
 case "$1" in
 init)
@@ -64,20 +58,33 @@ init)
 	mkdir bibliography
 	;;
 add)
-	shift
+	shift 1
 
-	if [ -z "$1" ]; then
-		ID="$(dmenu -p "Identifier: " </dev/null)"
-	else
-		ID="$1"
+	id="$1"
+	if [ -z "$id" ]; then
+		echo "sci add requires an argument" && exit 1
 	fi
 
-	[ -f "$BIB_FILE" ] && BIB_STR="$(cat "$BIB_FILE")"
+	grep -iqF "$id" "$bib_file" && echo "Entry already exists" && exit 0
 
-	TYPE_ID="$(extract_identifier "$ID")"
+	info="$(getbib "$id")"
+	bib_info="$(echo "$info" | head -n -1)"
+	pdf_url="$(echo "$info" | tail -n 1)"
 
-	if sci_add $TYPE_ID "$BIB_FILE" && [ -f "$BIB_FILE" ]; then
-		sci_update "$BIB_FILE"
+	id_pdf_name="$(get_pdf_name "$bib_info")"
+	bib_id="$(echo "$id_pdf_name" | head -n 1)"
+	pdf_name="$(echo "$id_pdf_name" | tail -n 1)"
+
+	if grep -qviF "$bib_id" "$bib_file"; then
+		echo "$bib_info" >>"$bib_file"
+		bibtool -i "$bib_file" -s -o "$bib_file"
+		sed -i 's/@\([A-Z]\)/@\L\1/g' "$bib_file"
+	fi
+
+	pdf_path="$bibliography_dir/$pdf_name.pdf"
+
+	if [ "$(file -b --mime-type "$pdf_path")" != "application/pdf" ]; then
+		curl -Ls "$pdf_url" >"$bibliography_dir/$pdf_name.pdf"
 	fi
 
 	;;
@@ -105,16 +112,5 @@ uninstall)
 
 update-git)
 	[ -d "$SCI_DIRECTORY" ] && cd "$SCI_DIRECTORY" && sudo git pull
-	;;
-
-*)
-	TYPE_ID="$(extract_identifier "$1")"
-	[ -z "$TYPE_ID" ] && help && exit 1
-
-	if sci_add $TYPE_ID "$BIB_FILE" && [ -f "$BIB_FILE" ]; then
-		sci_update "$BIB_FILE"
-	elif [ -f "$BIB_FILE" ]; then
-		sci_open "$(echo "$TYPE_ID" | cut -d' ' -f 2-)" "$BIB_FILE"
-	fi
 	;;
 esac

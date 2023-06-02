@@ -1,61 +1,50 @@
 #!/bin/sh
 
-zotero () {
-    BIB_STR="$(curl -sd "$identifier" -H "Content-Type: text/plain" "http://localhost:1969/search" | sed -e 's,\\[trn],,g')"
+input() {
+	BIB_STR="$(vipe --suffix bib)"
 
-    if [ "$BIB_STR" = "No items returned from any translator" ] || [ "$BIB_STR" = "No identifiers found" ]
-    then
-        return 1
-    fi
+	if [ -n "$BIB_FILE" ]; then
+		BIB_STR="$(cat "$BIB_FILE")\n$BIB_STR"
+	fi
 
-    URL="$(echo "$BIB_STR" | jq -r '.[0]?.url')"
-
-    if [ -z "$URL" ] || [ "$URL" = "null" ]
-    then
-        JSON="$BIB_STR"
-    else
-        JSON="$(curl -fsd "$URL" -H "Content-Type: text/plain" "http://localhost:1969/web")"
-        PDF_URL="$(echo "$JSON" | jq -r 'map(select(.mimeType == "application/pdf")) | .[]?.url' | head -n 1)"
-    fi
-
-    if [ -f "$BIB_FILE" ]
-    then
-        JSON_BIB="$(curl -fs --data-binary "@$BIB_FILE" -H "Content-Type: text/plain" "http://localhost:1969/import")"
-        JSON="$(printf "%s\n%s" "$JSON_BIB" "$JSON" | jq -s "add")"
-    fi
-
-    echo "$PDF_URL"
-    curl -fsd "$JSON" -H "Content-Type: application/json" "http://localhost:1969/export?format=biblatex"
+	echo ""
+	printf "%s" "$BIB_STR"
 }
 
-openlibrary () {
-    JSON="$(curl -sd "https://openlibrary.org/isbn/$identifier" -H "Content-Type: text/plain" "http://localhost:1969/web" | jq ".[]? += {\"ISBN\": \"$identifier\"}")"
+check_dependencies() {
+	# test for install dependencies
+	test -z "$(
+		test "$(which bibtool)" && test "$(which bibclean)" && test "$(which curl)" && test "$(which vipe)" && echo true
+	)" && echo "$(basename "$0") requires curl, bibtool and bibclean to be installed and in your path." >&2 && return 1
 
-    if [ -n "$BIB_FILE" ]
-    then
-        JSON_BIB="$(curl -fs --data-binary "@$BIB_FILE" -H "Content-Type: text/plain" "http://localhost:1969/import")"
-        JSON="$(printf "%s\n%s" "$JSON_BIB" "$JSON" | jq -s "add")"
-    fi
-
-    echo ""
-    curl -fsd "$JSON" -H "Content-Type: application/json" "http://localhost:1969/export?format=biblatex"
+	return 0
 }
 
-input () {
-    BIB_STR="$(vipe --suffix bib)"
+get_url() {
+	doi="$1"
 
-    if [ -n "$BIB_FILE" ]
-    then
-        BIB_STR="$(cat "$BIB_FILE")\n$BIB_STR"
-    fi
-
-    echo ""
-    printf "%s" "$BIB_STR"
+	if [ "${doi#*"http"}" = "$doi" ]; then
+		curl -Ls -o /dev/null -w "%{url_effective}" "https://doi.org/$doi"
+	elif [ "${doi#*"doi"}" != "$doi" ]; then
+		curl -Ls -o /dev/null -w "%{url_effective}" "$doi"
+	else
+		echo "$doi"
+	fi
 }
 
-[ -z "$1" ] && echo "No argument to getbib." && exit
-identifier="$1"
+doi_to_bib() {
+	url="$(get_url "$1")"
 
-[ -n "$2" ] && BIB_FILE="$2"
+	json="$(curl -sd "$url" -H "Content-Type: text/plain" "http://localhost:1969/web")"
+	pdf_url="$(echo "$json" | jq -r 'map(select(.mimeType == "application/pdf")) | .[0].url')"
 
-zotero || openlibrary || input
+	bib="$(curl -sd "$json" -H "Content-Type: application/json" "http://localhost:1969/export?format=bibtex")"
+
+	echo "$bib"
+	echo "$pdf_url"
+}
+
+[ -z "$1" ] && echo "No argument given to getbib." && exit
+check_dependencies || exit 1
+
+doi_to_bib "$1"

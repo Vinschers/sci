@@ -4,6 +4,15 @@ help() {
 	echo "help"
 }
 
+check_dependencies() {
+	# test for install dependencies
+	test -z "$(
+		test "$(which bibtool)" && test "$(which bibtex-tidy)" && test "$(which curl)" && test "$(which vipe)" && echo true
+	)" && echo "$(basename "$0") requires curl, bibtool and bibtex-tidy to be installed and in your path." >&2 && return 1
+
+	return 0
+}
+
 check() {
 	if [ "$2" = "1" ]; then
 		printf "%s [Y/n] " "$1" >&2
@@ -152,6 +161,8 @@ add_from_id() {
         download_pdf "$pdf_url" "$pdf_path" "$bib_info"
     fi
 }
+
+check_dependencies || exit 1
 
 case "$1" in
 init)

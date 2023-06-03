@@ -1,21 +1,10 @@
 #!/bin/sh
 
-input() {
-	BIB_STR="$(vipe --suffix bib)"
-
-	if [ -n "$BIB_FILE" ]; then
-		BIB_STR="$(cat "$BIB_FILE")\n$BIB_STR"
-	fi
-
-	echo ""
-	printf "%s" "$BIB_STR"
-}
-
 check_dependencies() {
 	# test for install dependencies
 	test -z "$(
-		test "$(which bibtool)" && test "$(which bibclean)" && test "$(which curl)" && test "$(which vipe)" && echo true
-	)" && echo "$(basename "$0") requires curl, bibtool and bibclean to be installed and in your path." >&2 && return 1
+		test "$(which curl)" && echo true
+	)" && echo "$(basename "$0") requires curl." >&2 && return 1
 
 	return 0
 }

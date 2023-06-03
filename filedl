@@ -61,6 +61,12 @@ def getDownloadedFileName(driver, waitTime):
     driver.switch_to.window(driver.window_handles[-1])
     # navigate to chrome downloads
     driver.get("chrome://downloads")
+
+    try:
+        driver.execute_script("return document.querySelector('downloads-manager').shadowRoot.querySelector('#downloadsList downloads-item').shadowRoot")
+    except:
+        return None
+
     # define the endTime
     endTime = time.time() + waitTime
     while True:
@@ -109,7 +115,11 @@ if __name__ == "__main__":
     with driver:
         try:
             driver.get(url)
-            filename = getDownloadedFileName(driver, 120)
+
+            filename = getDownloadedFileName(driver, 10)
+            if filename is None:
+                exit(1)
+
             print(f"{path}/{filename}")
         except:
             exit(1)

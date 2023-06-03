@@ -16,6 +16,10 @@ find_bib_file() {
 
 }
 
+pdf_to_doi() {
+    pdftotext -q -l 2 "$1" - | sed 's/Digital Object Identifier[:]*/doi:/g' | grep -m1 -A1 'DOI\|doi' | sed 's/[\[\]]/ /g' | sed 's/dx\.doi\.org\// doi:/g' | sed 's/doi>/ doi:/g' | sed 's/</ /g' | sed -n -e 's_.*[Dd][Oo][Ii][:) ] *\([[:digit:]][[:digit:]]*.[[:alnum:])(.-]*/[[:alnum:])(.-][[:alnum:]):(.-]*[[:alnum:]-]\).*_\1_p'
+}
+
 format_bib() {
 	bibtex-tidy --curly --numeric --months --space=4 --align=24 --sort=type,key --duplicates=key --no-escape --sort-fields=title,shorttitle,author,doi,isbn,year,month,day,journal,abstract,booktitle,location,on,publisher,address,series,volume,number,pages,issn,url,urldate,copyright,category,note,metadata --trailing-commas --encode-urls --remove-empty-fields --no-remove-dupe-fields --generate-keys="[auth:required:lower]_[year:required]_[veryshorttitle:lower][duplicateNumber]" --wrap=80 --quiet "$@"
 }
@@ -53,7 +57,7 @@ add_to_library() {
 			[ -n "$abstract" ] && bib_info="$(printf "%s" "$bib_info" | bibtool -- "add.field{abstract='$abstract'}")"
 		fi
 
-		echo "$bib_info" >>"$bib_file"
+		printf '%s' "$bib_info" >>"$bib_file"
 
 		echo "Formatting $bib_file"
 		format_bib -m "$bib_file"
@@ -66,13 +70,19 @@ download_from_scihub() {
 
 	doi="$(python -c "import bibtexparser; entry = bibtexparser.bparser.BibTexParser(common_strings=True, ignore_nonstandard_types=False).parse(\"\"\"$bib\"\"\").entries[0]; print(entry.get('doi', ''))")"
 	if [ -n "$doi" ]; then
-		pdf_url="https://sci-hub.st$(curl -s "https://sci-hub.st/$doi" | grep "<button onclick" | awk 'BEGIN {FS="\""} {print $2}' | sed "s/location.href='//g;s/'//g;s/?download=true//g")"
+        scihub_link="$(curl -s "https://sci-hub.st/$doi" | grep "<button onclick" | awk 'BEGIN {FS="\""} {print $2}' | sed "s/location.href='//g;s/'//g;s/?download=true//g")"
+
+	    if [ "${scihub_link#*"//"}" != "$scihub_link" ]; then
+            pdf_url="https:$scihub_link"
+        else
+		    pdf_url="https://sci-hub.st$scihub_link"
+        fi
 	else
 		isbn="$(python -c "import bibtexparser; entry = bibtexparser.bparser.BibTexParser(common_strings=True, ignore_nonstandard_types=False).parse(\"\"\"$bib\"\"\").entries[0]; print(entry.get('isbn', ''))")"
 		pdf_url="$(curl -Ls "https://sci-hub.st/$isbn" | grep ">GET<" | grep -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*")"
 	fi
 
-	[ -n "$pdf_url" ] && curl -s "$pdf_url" >"$pdf_path"
+	[ -n "$pdf_url" ] && curl -Ls "$pdf_url" >"$pdf_path"
 }
 
 download_pdf() {
@@ -100,6 +110,8 @@ download_pdf() {
 
 add_from_id() {
 	id="$1"
+    file="$2"
+
 	if [ -z "$id" ]; then
 		echo "sci add requires an argument" && exit 1
 	fi
@@ -114,7 +126,14 @@ add_from_id() {
 	pdf_name="$(echo "$id_pdf_name" | tail -n 1)"
 
     add_to_library "$bib_info" "$bib_id"
-    download_pdf "$pdf_url" "$bibliography_dir/$pdf_name.pdf" "$bib_info"
+
+    pdf_path="$bibliography_dir/$pdf_name.pdf"
+
+    if [ -n "$file" ]; then
+        mv "$file" "$pdf_path"
+    else
+        download_pdf "$pdf_url" "$pdf_path" "$bib_info"
+    fi
 }
 
 bib_file="$(find_bib_file)"
@@ -131,7 +150,17 @@ init)
 add)
 	shift 1
 
-	add_from_id "$1"
+    if [ -f "$1" ]; then
+        doi="$(pdf_to_doi "$1")"
+
+        if [ -n "$doi" ]; then
+            add_from_id "$doi" "$1"
+        else
+            echo "Could not find DOI from $1"
+        fi
+    else
+	    add_from_id "$1"
+    fi
 	;;
 
 uninstall)

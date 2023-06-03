@@ -16,6 +16,10 @@ find_bib_file() {
 
 }
 
+format_bib() {
+	bibtex-tidy --curly --numeric --months --space=4 --align=24 --sort=type,key --duplicates=key --no-escape --sort-fields=title,shorttitle,author,doi,isbn,year,month,day,journal,abstract,booktitle,location,on,publisher,address,series,volume,number,pages,issn,url,urldate,copyright,category,note,metadata --trailing-commas --encode-urls --remove-empty-fields --no-remove-dupe-fields --generate-keys="[auth:required:lower]_[year:required]_[veryshorttitle:lower][duplicateNumber]" --wrap=80 --quiet "$@"
+}
+
 get_pdf_name() {
 	bib="$1"
 
@@ -28,7 +32,7 @@ get_pdf_name() {
 
 	case "$bib_type" in
 	book)
-		echo "$bib_title"
+		echo "$bib_title" | sed 's/{//g' | sed 's/}//g'
 		;;
 	*)
 		echo "$bib_id"
@@ -36,18 +40,85 @@ get_pdf_name() {
 	esac
 }
 
-extract_identifier() {
-	ID="$(echo "$@" | grep -Po "(10\.[0-9a-zA-Z]+\/(?:(?![\"&\'])\S)+)\b")"
-	[ -n "$ID" ] && echo "doi $ID" && return 0
+add_to_library() {
+    bib_info="$1"
+    bib_id="$2"
 
-	ID="$(echo "$@" | grep -Po "^(?=(?:\D*\d){10}(?:(?:\D*\d){3})?$)[\d-]+\$")"
-	[ -n "$ID" ] && echo "isbn $(echo "$ID" | sed -e "s/-//g")" && return 0
+	if ! grep -q "$bib_id" "$bib_file"; then
+		echo "Adding entry to $bib_file"
 
-	echo "N $*"
+		if ! printf "%s" "$bib_info" | grep -qP "abstract[ ]+"; then
+			url="$(printf "%s" "$bib_info" | grep -Po 'http[a-zA-Z:/.0-9-=?]+')"
+			abstract="$(echo "# Copy the abstract from $url below" | vipe | grep -v "^#")"
+			[ -n "$abstract" ] && bib_info="$(printf "%s" "$bib_info" | bibtool -- "add.field{abstract='$abstract'}")"
+		fi
+
+		echo "$bib_info" >>"$bib_file"
+
+		echo "Formatting $bib_file"
+		format_bib -m "$bib_file"
+	fi
+}
+
+download_from_scihub() {
+    bib="$1"
+    pdf_path="$2"
+
+	doi="$(python -c "import bibtexparser; entry = bibtexparser.bparser.BibTexParser(common_strings=True, ignore_nonstandard_types=False).parse(\"\"\"$bib\"\"\").entries[0]; print(entry.get('doi', ''))")"
+	if [ -n "$doi" ]; then
+		pdf_url="https://sci-hub.st$(curl -s "https://sci-hub.st/$doi" | grep "<button onclick" | awk 'BEGIN {FS="\""} {print $2}' | sed "s/location.href='//g;s/'//g;s/?download=true//g")"
+	else
+		isbn="$(python -c "import bibtexparser; entry = bibtexparser.bparser.BibTexParser(common_strings=True, ignore_nonstandard_types=False).parse(\"\"\"$bib\"\"\").entries[0]; print(entry.get('isbn', ''))")"
+		pdf_url="$(curl -Ls "https://sci-hub.st/$isbn" | grep ">GET<" | grep -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*")"
+	fi
+
+	[ -n "$pdf_url" ] && curl -s "$pdf_url" >"$pdf_path"
+}
+
+download_pdf() {
+    pdf_url="$1"
+    pdf_path="$2"
+    bib="$3"
+
+	if [ -n "$pdf_url" ] && [ "$(file -b --mime-type "$pdf_path")" != "application/pdf" ]; then
+		echo "Downloading PDF from $pdf_url to $pdf_path"
+		download_path="$(filedl "$pdf_url" "$bibliography_dir")"
+		[ -n "$download_path" ] && mv "$download_path" "$pdf_path"
+	fi
+
+	if [ "$(file -b --mime-type "$pdf_path")" != "application/pdf" ]; then
+		echo "Download failed"
+		[ -e "$pdf_path" ] && rm "$pdf_path"
+
+		printf "Download from Sci-Hub? [Y/n] " >&2
+		read -r ans
+		if [ "$ans" = "" ] || [ "$ans" = "Y" ] || [ "$ans" = "y" ]; then
+            download_from_scihub "$bib" "$pdf_path"
+		fi
+	fi
+}
+
+add_from_id() {
+	id="$1"
+	if [ -z "$id" ]; then
+		echo "sci add requires an argument" && exit 1
+	fi
+
+	echo "Getting BibTeX metadata..."
+	info="$(getbib "$id")"
+	bib_info="$(printf "%s" "$info" | grep -v '^http' | format_bib -o)"
+	pdf_url="$(printf "%s" "$info" | grep '^http')"
+
+	id_pdf_name="$(get_pdf_name "$bib_info")"
+	bib_id="$(echo "$id_pdf_name" | head -n 1)"
+	pdf_name="$(echo "$id_pdf_name" | tail -n 1)"
+
+    add_to_library "$bib_info" "$bib_id"
+    download_pdf "$pdf_url" "$bibliography_dir/$pdf_name.pdf" "$bib_info"
 }
 
 bib_file="$(find_bib_file)"
-[ -z "$bib_file" ] && touch library.bib && bib_file="library.bib"
+[ -z "$bib_file" ] && echo "" >library.bib && bib_file="library.bib"
 
 bibliography_dir="$(dirname "$bib_file")/bibliography"
 mkdir -p "$bibliography_dir"
@@ -60,44 +131,7 @@ init)
 add)
 	shift 1
 
-	id="$1"
-	if [ -z "$id" ]; then
-		echo "sci add requires an argument" && exit 1
-	fi
-
-	grep -iqF "$id" "$bib_file" && echo "Entry already exists" && exit 0
-
-	info="$(getbib "$id")"
-	bib_info="$(echo "$info" | head -n -1)"
-	pdf_url="$(echo "$info" | tail -n 1)"
-
-	id_pdf_name="$(get_pdf_name "$bib_info")"
-	bib_id="$(echo "$id_pdf_name" | head -n 1)"
-	pdf_name="$(echo "$id_pdf_name" | tail -n 1)"
-
-	if grep -qviF "$bib_id" "$bib_file"; then
-		echo "$bib_info" >>"$bib_file"
-		bibtool -i "$bib_file" -s -o "$bib_file"
-		sed -i 's/@\([A-Z]\)/@\L\1/g' "$bib_file"
-	fi
-
-	pdf_path="$bibliography_dir/$pdf_name.pdf"
-
-	if [ "$(file -b --mime-type "$pdf_path")" != "application/pdf" ]; then
-		curl -Ls "$pdf_url" >"$bibliography_dir/$pdf_name.pdf"
-	fi
-
-	;;
-
-open)
-	shift
-
-	ID="$(extract_identifier "$1" | cut -d' ' -f 2-)"
-	sci_open "$ID" "$BIB_FILE"
-	;;
-
-update)
-	[ -f "$BIB_FILE" ] && sci_update "$BIB_FILE"
+	add_from_id "$1"
 	;;
 
 uninstall)

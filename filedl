@@ -53,6 +53,7 @@ class ChromeWithPrefs(webdriver.Chrome):
             del options._experimental_options["prefs"]
 
 
+
 # method to get the downloaded file name
 def getDownloadedFileName(driver, waitTime):
     driver.execute_script("window.open()")
@@ -76,21 +77,39 @@ def getDownloadedFileName(driver, waitTime):
                 )
         except:
             pass
-        time.sleep(1)
+        time.sleep(0.5)
         if time.time() > endTime:
             break
 
 
 if __name__ == "__main__":
+    n_args = len(sys.argv)
+    if n_args < 2 or n_args > 3:
+        print("Usage: filedl url [path]")
+        exit(1)
+
     url = sys.argv[1]
 
+    if n_args == 2:
+        path = os.getcwd()
+    else:
+        path = sys.argv[2]
+
+    prefs = {
+        "download.default_directory": path,
+        "directory_upgrade": True,
+        "plugins.always_open_pdf_externally": True,
+    }
     options = webdriver.ChromeOptions()
-    options.add_experimental_option("prefs", {"plugins.always_open_pdf_externally": True})
+    options.add_experimental_option("prefs", prefs)
 
     # use the derived Chrome class that handles prefs
     driver = ChromeWithPrefs(options=options)
 
     with driver:
-        driver.get(url)
-        filename = getDownloadedFileName(driver, 5)
-        print(f"{os.environ.get('HOME', '')}/Downloads/{filename}")
+        try:
+            driver.get(url)
+            filename = getDownloadedFileName(driver, 120)
+            print(f"{path}/{filename}")
+        except:
+            exit(1)

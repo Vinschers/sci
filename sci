@@ -197,12 +197,15 @@ search)
     shift 1
 
     search="$(echo "$@" | sed 's/ /%20/g')"
-    doi_results="$(curl -s "https://api.crossref.org/works?query.bibliographic=%22$search%22&rows=12" | jq -r '.message.items[] | "[\(.author[0].family)] \(.title[0]){\(.DOI)}"')"
-    isbn_results="$(curl -s "https://openlibrary.org/search.json?q=$search&fields=author_name,title,publish_year,key&limit=12" | jq -r '.docs[] | "[\(.author_name[0])] \(.title) (\(.publish_year[0])){https://openlibrary.org\(.key)}"')"
+    doi_results="$(curl -s "https://api.crossref.org/works?query.bibliographic=%22$search%22&rows=4" | jq -r '.message.items[] | "Paper: [\(.author[0].family)] \(.title[0]) (\(."published-print"."date-parts"[0][0])){\(.DOI)}"')"
+    isbn_results="$(curl -s "https://www.googleapis.com/books/v1/volumes?q=intitle:$search&maxResults=5" | jq -r '.items[].volumeInfo | "Book: [\(.authors[0])] \(.title) (\(.publishedDate)){\(.industryIdentifiers[0].identifier)}"')"
 
     all_results="$(echo "$doi_results"; echo "$isbn_results")"
 
-    fzf_result="$(echo "$all_results" | sed -E 's|\{.+\}$||g' | fzf | sed 's|\[|\\\[|g' | sed 's|\]|\\\]|g')"
+    fzf_result="$(echo "$all_results" | sed -E 's|\{.+\}$||g' | fzf)"
+    [ -z "$fzf_result" ] && exit 0
+    fzf_result="$(echo "$fzf_result" | sed 's|\[|\\\[|g' | sed 's|\]|\\\]|g')"
+
     id="$(echo "$all_results" | grep "$fzf_result" | sed "s|$fzf_result||g" | sed -E 's|^\{||g' | sed -E 's|\}$||g')"
 
     [ -n "$id" ] && getbib "$id"

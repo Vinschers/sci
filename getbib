@@ -12,44 +12,47 @@ check_dependencies() {
 get_bib() {
 	id="$1"
 
-    # if it is an URL
+	# if it is an URL
 	if [ "${id#*"http"}" != "$id" ]; then
-        # if it has "doi" in it
-        if [ "${id#*"doi"}" != "$id" ]; then
-            url="$(curl -Ls -o /dev/null -w "%{url_effective}" "$id")"
-	        json="$(curl -sd "$url" -H "Content-Type: text/plain" "http://localhost:1969/web")"
-        else
-	        json="$(curl -sd "$id" -H "Content-Type: text/plain" "http://localhost:1969/web")"
-        fi
+		# if it has "doi" in it
+		if [ "${id#*"doi"}" != "$id" ]; then
+			url="$(curl -Ls -o /dev/null -w "%{url_effective}" "$id")"
+			json="$(curl -sd "$url" -H "Content-Type: text/plain" "http://localhost:1969/web")"
+		else
+			json="$(curl -sd "$id" -H "Content-Type: text/plain" "http://localhost:1969/web")"
+		fi
 	else # it is not an URL
-        doi="$(echo "$id" | grep -Po "(10\.[0-9a-zA-Z]+\/(?:(?![\"&\'])\S)+)\b")"
-        isbn="$(echo "$id" | grep -Po '^(?=(?:[^0-9]*[0-9]){10}(?:(?:[^0-9]*[0-9]){3})?$)[0-9-]+$' | sed "s/-//g")"
+		doi="$(echo "$id" | grep -Po "(10\.[0-9a-zA-Z]+\/(?:(?![\"&\'])\S)+)\b")"
+		isbn="$(echo "$id" | grep -Po '^(?=(?:[^0-9]*[0-9]){10}(?:(?:[^0-9]*[0-9]){3})?$)[0-9-]+$' | sed "s/-//g")"
 
-        if [ -n "$doi" ]; then
-            url="$(curl -Ls -o /dev/null -w "%{url_effective}" "https://doi.org/$doi")"
-	        json="$(curl -sd "$url" -H "Content-Type: text/plain" "http://localhost:1969/web")"
-        elif [ -n "$isbn" ]; then
-            json="$(curl -sd "$isbn" -H "Content-Type: text/plain" "http://localhost:1969/search")"
-        fi
+		if [ -n "$doi" ]; then
+			url="$(curl -Ls -o /dev/null -w "%{url_effective}" "https://doi.org/$doi")"
+			json="$(curl -sd "$url" -H "Content-Type: text/plain" "http://localhost:1969/web")"
+		elif [ -n "$isbn" ]; then
+			json="$(curl -sd "$isbn" -H "Content-Type: text/plain" "http://localhost:1969/search")"
+		fi
 	fi
 
-    [ -n "$json" ] && json_to_bib "$json"
+	[ -n "$json" ] && json_to_bib "$json"
 }
 
 json_to_bib() {
-    json="$1"
+	json="$1"
 
-	pdf_url="$(printf "%s" "$json" | jq -r 'map(select(.mimeType == "application/pdf")) | .[0].url')"
+    json="$(printf "%s" "$json" | jq -r 'if type == "object" then [.] else . end')"
+	pdf_url="$(printf "%s" "$json" | jq -r 'try map(select(.mimeType == "application/pdf")) catch [{url: ""}] | .[0].url')"
 	bib="$(curl -sd "$json" -H "Content-Type: application/json" "http://localhost:1969/export?format=bibtex")"
 
-	printf '%s' "$bib"
-    echo ""
+    [ "$bib" = "Input must be an array of items as JSON" ] && bib=""
 
-    if [ "$pdf_url" = "null" ]; then
-        echo ""
-    else
-	    echo "$pdf_url"
-    fi
+	printf '%s' "$bib"
+	echo ""
+
+	if [ -z "$pdf_url" ] || [ "$pdf_url" = "null" ]; then
+		echo ""
+	else
+		echo "$pdf_url"
+	fi
 }
 
 [ -z "$1" ] && echo "No argument given to getbib." && exit

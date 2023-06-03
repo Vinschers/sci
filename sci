@@ -44,27 +44,14 @@ pdf_to_doi() {
 }
 
 format_bib() {
-	bibtex-tidy --curly --numeric --months --space=4 --align=24 --sort=type,key --duplicates=key --no-escape --sort-fields=title,shorttitle,author,doi,isbn,year,month,day,journal,abstract,booktitle,location,on,publisher,address,series,volume,number,pages,issn,url,urldate,copyright,category,note,metadata --trailing-commas --encode-urls --remove-empty-fields --no-remove-dupe-fields --generate-keys="[auth:required:lower]_[year:required]_[veryshorttitle:lower][duplicateNumber]" --wrap=80 --quiet "$@"
+	bibtex-tidy --curly --numeric --months --space=4 --align=24 --sort=type,key --duplicates=key,doi --merge=combine --no-escape --sort-fields=title,shorttitle,author,doi,isbn,year,month,day,journal,abstract,booktitle,location,on,publisher,address,series,volume,number,pages,issn,url,urldate,copyright,category,note,metadata --trailing-commas --encode-urls --remove-empty-fields --no-remove-dupe-fields --generate-keys="[auth:required:lower]_[year:required]_[veryshorttitle:lower][duplicateNumber]" --wrap=80 --quiet "$@"
 }
 
-get_pdf_name() {
+get_bib_id() {
 	bib="$1"
 
-	bib_id_type="$(python -c "import bibtexparser; entry = bibtexparser.bparser.BibTexParser(common_strings=True, ignore_nonstandard_types=False).parse(\"\"\"$bib\"\"\").entries[-1]; print(entry['ID']); print(entry['ENTRYTYPE']); print(entry['title'])")"
-	bib_id="$(echo "$bib_id_type" | sed '1q;d')"
-	bib_type="$(echo "$bib_id_type" | sed '2q;d')"
-	bib_title="$(echo "$bib_id_type" | sed '3q;d' | sed -e "s/\\\\//g" | sed -e "s/://g")"
-
+	bib_id="$(python -c "import bibtexparser; entry = bibtexparser.bparser.BibTexParser(common_strings=True, ignore_nonstandard_types=False).parse(\"\"\"$bib\"\"\").entries[-1]; print(entry['ID'])")"
 	echo "$bib_id"
-
-	case "$bib_type" in
-	book)
-		echo "$bib_title" | sed 's/{//g' | sed 's/}//g'
-		;;
-	*)
-		echo "$bib_id"
-		;;
-	esac
 }
 
 add_to_library() {
@@ -104,9 +91,15 @@ download_from_scihub() {
 	else
 		isbn="$(python -c "import bibtexparser; entry = bibtexparser.bparser.BibTexParser(common_strings=True, ignore_nonstandard_types=False).parse(\"\"\"$bib\"\"\").entries[0]; print(entry.get('isbn', ''))")"
 		pdf_url="$(curl -Ls "https://sci-hub.st/$isbn" | grep ">GET<" | grep -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*")"
+
+        if [ -z "$pdf_url" ]; then
+            lib_lol_url="$(curl -s "https://libgen.li/index.php?req=$isbn&columns%5B%5D=i" | grep -Po 'library.lol[a-zA-Z0-9/\.]+' | head -1)"
+		    pdf_url="$(curl -Ls "$lib_lol_url" | grep ">GET<" | grep -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*")"
+        fi
 	fi
 
 	[ -n "$pdf_url" ] && curl -Ls "$pdf_url" >"$pdf_path"
+    [ -z "$pdf_url" ] && echo "Could not download file."
 }
 
 download_pdf() {
@@ -130,7 +123,7 @@ download_pdf() {
 		echo "Download failed"
 		[ -e "$pdf_path" ] && rm "$pdf_path"
 
-        check "Download from Sci-Hub?" 1 && download_from_scihub "$bib" "$pdf_path"
+        check "Download from anyway?" 1 && download_from_scihub "$bib" "$pdf_path"
 	fi
 }
 
@@ -153,13 +146,10 @@ add_from_id() {
 	bib_info="$(printf "%s" "$info" | grep -v '^http' | format_bib -o)"
 	pdf_url="$(printf "%s" "$info" | grep '^http')"
 
-	id_pdf_name="$(get_pdf_name "$bib_info")"
-	bib_id="$(echo "$id_pdf_name" | head -n 1)"
-	pdf_name="$(echo "$id_pdf_name" | tail -n 1)"
-
+	bib_id="$(get_bib_id "$bib_info")"
     add_to_library "$bib_file" "$bib_info" "$bib_id"
 
-    pdf_path="$bibliography_dir/$pdf_name.pdf"
+    pdf_path="$bibliography_dir/$bib_id.pdf"
 
     if [ -n "$file" ]; then
         mv "$file" "$pdf_path"
@@ -192,6 +182,8 @@ add)
     else
 	    add_from_id "$1"
     fi
+
+    echo "Done"
 	;;
 search)
     shift 1

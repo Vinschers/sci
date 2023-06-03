@@ -4,6 +4,20 @@ help() {
 	echo "help"
 }
 
+check() {
+	if [ "$2" = "1" ]; then
+		printf "%s [Y/n] " "$1" >&2
+		read -r ans
+
+		[ "$ans" = "" ] || [ "$ans" = "Y" ] || [ "$ans" = "y" ]
+	else
+		printf "%s [y/N] " "$1" >&2
+		read -r ans
+
+		! [ "$ans" = "" ] || [ "$ans" = "N" ] || [ "$ans" = "n" ]
+	fi
+}
+
 find_bib_file() {
 	path="."
 
@@ -45,8 +59,9 @@ get_pdf_name() {
 }
 
 add_to_library() {
-    bib_info="$1"
-    bib_id="$2"
+    bib_file="$1"
+    bib_info="$2"
+    bib_id="$3"
 
 	if ! grep -q "$bib_id" "$bib_file"; then
 		echo "Adding entry to $bib_file"
@@ -100,17 +115,19 @@ download_pdf() {
 		echo "Download failed"
 		[ -e "$pdf_path" ] && rm "$pdf_path"
 
-		printf "Download from Sci-Hub? [Y/n] " >&2
-		read -r ans
-		if [ "$ans" = "" ] || [ "$ans" = "Y" ] || [ "$ans" = "y" ]; then
-            download_from_scihub "$bib" "$pdf_path"
-		fi
+        check "Download from Sci-Hub?" 1 && download_from_scihub "$bib" "$pdf_path"
 	fi
 }
 
 add_from_id() {
 	id="$1"
     file="$2"
+
+    bib_file="$(find_bib_file)"
+    [ -z "$bib_file" ] && echo "" >library.bib && bib_file="library.bib"
+
+    bibliography_dir="$(dirname "$bib_file")/bibliography"
+    mkdir -p "$bibliography_dir"
 
 	if [ -z "$id" ]; then
 		echo "sci add requires an argument" && exit 1
@@ -125,7 +142,7 @@ add_from_id() {
 	bib_id="$(echo "$id_pdf_name" | head -n 1)"
 	pdf_name="$(echo "$id_pdf_name" | tail -n 1)"
 
-    add_to_library "$bib_info" "$bib_id"
+    add_to_library "$bib_file" "$bib_info" "$bib_id"
 
     pdf_path="$bibliography_dir/$pdf_name.pdf"
 
@@ -135,12 +152,6 @@ add_from_id() {
         download_pdf "$pdf_url" "$pdf_path" "$bib_info"
     fi
 }
-
-bib_file="$(find_bib_file)"
-[ -z "$bib_file" ] && echo "" >library.bib && bib_file="library.bib"
-
-bibliography_dir="$(dirname "$bib_file")/bibliography"
-mkdir -p "$bibliography_dir"
 
 case "$1" in
 init)
@@ -162,6 +173,21 @@ add)
 	    add_from_id "$1"
     fi
 	;;
+search)
+    shift 1
+
+    search="$(echo "$@" | sed 's/ /%20/g')"
+    api_results="$(curl -s "https://api.crossref.org/works?query.bibliographic=%22$search%22&rows=5" | jq -r '.message.items[] | "[\(.author[0].family)] \(.title[0]){\(.DOI)}"')"
+
+    fzf_result="$(echo "$api_results" | sed -E 's|\{.+\}$||g' | fzf | sed 's|\[|\\\[|g' | sed 's|\]|\\\]|g')"
+    doi="$(echo "$api_results" | grep "$fzf_result" | sed "s|$fzf_result||g" | sed -E 's|^\{||g' | sed -E 's|\}$||g')"
+
+    if check "Add result to library?" 1; then
+        add_from_id "$doi"
+    else
+        echo "$doi"
+    fi
+    ;;
 
 uninstall)
 	[ -d "$SCI_DIRECTORY" ] && sudo rm -rf "$SCI_DIRECTORY"

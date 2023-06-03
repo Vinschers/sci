@@ -54,6 +54,7 @@ json_to_bib() {
 	bib="$(curl -sd "$json" -H "Content-Type: application/json" "http://localhost:1969/export?format=bibtex")"
 
 	printf '%s' "$bib"
+    echo ""
 
     if [ "$pdf_url" = "null" ]; then
         echo ""

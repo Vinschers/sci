@@ -211,6 +211,6 @@ uninstall)
 	;;
 
 update-git)
-	[ -d "$SCI_DIRECTORY" ] && cd "$SCI_DIRECTORY" && sudo git pull
+    cd /usr/share/sci && git pull
 	;;
 esac

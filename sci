@@ -165,6 +165,9 @@ add_from_id() {
 check_dependencies || exit 1
 
 case "$1" in
+help)
+    help
+    ;;
 init)
 	touch library.bib
 	mkdir bibliography
@@ -211,6 +214,6 @@ uninstall)
 	;;
 
 update-git)
-    cd /usr/share/sci && git pull
+    cd /usr/share/sci && sudo git pull
 	;;
 esac

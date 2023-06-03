@@ -117,7 +117,7 @@ download_pdf() {
 	echo "Downloading PDF from $pdf_url to $pdf_path"
 
 	if [ -n "$pdf_url" ] && [ "$(file -b --mime-type "$pdf_path")" != "application/pdf" ]; then
-        curl -s "$pdf_url" > "$pdf_path"
+        curl -Ls "$pdf_url" > "$pdf_path"
 	fi
 
 	if [ -n "$pdf_url" ] && [ "$(file -b --mime-type "$pdf_path")" != "application/pdf" ]; then
@@ -197,16 +197,15 @@ search)
     shift 1
 
     search="$(echo "$@" | sed 's/ /%20/g')"
-    api_results="$(curl -s "https://api.crossref.org/works?query.bibliographic=%22$search%22&rows=5" | jq -r '.message.items[] | "[\(.author[0].family)] \(.title[0]){\(.DOI)}"')"
+    doi_results="$(curl -s "https://api.crossref.org/works?query.bibliographic=%22$search%22&rows=12" | jq -r '.message.items[] | "[\(.author[0].family)] \(.title[0]){\(.DOI)}"')"
+    isbn_results="$(curl -s "https://openlibrary.org/search.json?q=$search&fields=author_name,title,publish_year,key&limit=12" | jq -r '.docs[] | "[\(.author_name[0])] \(.title) (\(.publish_year[0])){https://openlibrary.org\(.key)}"')"
 
-    fzf_result="$(echo "$api_results" | sed -E 's|\{.+\}$||g' | fzf | sed 's|\[|\\\[|g' | sed 's|\]|\\\]|g')"
-    doi="$(echo "$api_results" | grep "$fzf_result" | sed "s|$fzf_result||g" | sed -E 's|^\{||g' | sed -E 's|\}$||g')"
+    all_results="$(echo "$doi_results"; echo "$isbn_results")"
 
-    if check "Add result to library?" 1; then
-        add_from_id "$doi"
-    else
-        echo "$doi"
-    fi
+    fzf_result="$(echo "$all_results" | sed -E 's|\{.+\}$||g' | fzf | sed 's|\[|\\\[|g' | sed 's|\]|\\\]|g')"
+    id="$(echo "$all_results" | grep "$fzf_result" | sed "s|$fzf_result||g" | sed -E 's|^\{||g' | sed -E 's|\}$||g')"
+
+    [ -n "$id" ] && getbib "$id"
     ;;
 
 uninstall)

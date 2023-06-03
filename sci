@@ -114,8 +114,14 @@ download_pdf() {
     pdf_path="$2"
     bib="$3"
 
+	echo "Downloading PDF from $pdf_url to $pdf_path"
+
 	if [ -n "$pdf_url" ] && [ "$(file -b --mime-type "$pdf_path")" != "application/pdf" ]; then
-		echo "Downloading PDF from $pdf_url to $pdf_path"
+        curl -s "$pdf_url" > "$pdf_path"
+	fi
+
+	if [ -n "$pdf_url" ] && [ "$(file -b --mime-type "$pdf_path")" != "application/pdf" ]; then
+        [ -e "$pdf_path" ] && rm "$pdf_path"
 		download_path="$(filedl "$pdf_url" "$bibliography_dir")"
 		[ -n "$download_path" ] && mv "$download_path" "$pdf_path"
 	fi
